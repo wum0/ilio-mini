@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """ilio - tiny Flare-On driver around Codex or Kimi Code.
 
-host:      ilio ls | get CHAL | solve CHAL|PATH [-i] [agent args] | auto [agent args] | shell CHAL | submit ID FLAG
-container: ilio agent [-i] [agent args] | ilio submit FLAG
+host:      ilio ls | get CHAL | solve CHAL|PATH [-i] [-k] [agent args] | auto [-i] [-k] [agent args] | shell CHAL | submit ID FLAG
+container: ilio agent [-i] [-k] [agent args] | ilio submit FLAG
 
-ILIO_AGENT=codex (default) or kimi. Kimi is installed in the image; login is the host ~/.kimi-code, model kimi-code/k3.
+-k uses Kimi Code (image binary, host ~/.kimi-code login, model kimi-code/k3). Default is Codex.
 """
 import base64, hashlib, json, mmap, os, re, shutil, signal, struct, subprocess, sys, threading, time
 from pathlib import Path
@@ -156,8 +156,8 @@ def local(p):
     return w, "", e, ["-c", 'web_search="disabled"']
 
 
-def preflight():
-    if os.environ.get("ILIO_AGENT", "codex").lower() == "kimi":
+def preflight(kimi=False):
+    if kimi:
         cred = Path.home() / ".kimi-code/credentials"
         if not cred.is_dir() or not any(cred.iterdir()):
             log("WARNING: ~/.kimi-code/credentials is empty - run `kimi login` on the host")
@@ -170,7 +170,7 @@ def preflight():
         log(f"WARNING: cannot read ~/.codex/auth.json ({e})")
 
 
-def docker_cmd(w, cid, env, tty):
+def docker_cmd(w, cid, env, tty, kimi=False):
     CHALS.mkdir(parents=True, exist_ok=True); solves = CHALS / "SOLVES.md"; solves.touch()
     cmd = ["docker", "run", "--rm", "--init", "--name", "ilio-" + w.name.lower(), "--cap-add", "SYS_PTRACE",
            "--security-opt", "seccomp=unconfined", "--shm-size", "2g", "--memory", os.environ.get("ILIO_MEM", "4g"),
@@ -180,7 +180,7 @@ def docker_cmd(w, cid, env, tty):
     if (ROOT / ".env").exists(): cmd += ["--env-file", str(ROOT / ".env")]
     for k, v in env.items(): cmd += ["-e", f"{k}={v}"]
     cmd += ["-v", f"{ROOT / 'ilio'}:/usr/local/bin/ilio:ro"]  # live edits reach the agent without a rebuild
-    if os.environ.get("ILIO_AGENT", "codex").lower() == "kimi":
+    if kimi:
         kimi_home = Path.home() / ".kimi-code"
         for d in ("credentials", "oauth"): (kimi_home / d).mkdir(parents=True, exist_ok=True)
         (w / ".kimi-code").mkdir(exist_ok=True)
@@ -190,9 +190,7 @@ def docker_cmd(w, cid, env, tty):
                 "-v", f"{ROOT / 'kimi'}/nudge.py:/root/.kimi-code/nudge.py:ro",
                 "-v", f"{kimi_home}/credentials:/root/.kimi-code/credentials",
                 "-v", f"{kimi_home}/oauth:/root/.kimi-code/oauth",
-                "-v", f"{w}/.kimi-code:/root/.kimi-code/sessions",
-                "-e", "ILIO_AGENT=kimi",
-                "-e", f"ILIO_KIMI_MODEL={os.environ.get('ILIO_KIMI_MODEL', 'kimi-code/k3')}"]
+                "-v", f"{w}/.kimi-code:/root/.kimi-code/sessions"]
         if (kimi_home / "device_id").exists():
             cmd += ["-v", f"{kimi_home}/device_id:/root/.kimi-code/device_id:ro"]
     for f in ("AGENTS.md", "hooks.json", "stop.sh", "nudge.py"): cmd += ["-v", f"{ROOT / 'codex' / f}:/root/.codex/{f}:ro"]
@@ -219,18 +217,18 @@ def docker_cmd(w, cid, env, tty):
 
 
 def solve(argv, s=None):
-    tui = "-i" in argv; argv = [a for a in argv if a != "-i"]
+    tui, kimi = "-i" in argv, "-k" in argv; argv = [a for a in argv if a not in ("-i", "-k")]
     key, extra = argv[0], argv[1:]
     if Path(key).exists():
         w, cid, env, x = local(Path(key).resolve()); extra = x + extra
     else:
         s = s or ctfd(); w = get(s, key); cid, env = json.loads((w / "challenge.json").read_text())["id"], {}
-    preflight(); (w / "FLAG").unlink(missing_ok=True)
+    preflight(kimi); (w / "FLAG").unlink(missing_ok=True)
     name = "ilio-" + w.name.lower(); t0 = time.time()
     rm = subprocess.run(["docker", "rm", "-f", name], capture_output=True, text=True)  # a stale container would block --name
     if rm.returncode and "no such container" not in (rm.stderr or "").lower():
         log(f"WARNING: docker rm {name} failed: {(rm.stderr or rm.stdout).strip()[:200]}")
-    proc = subprocess.Popen(docker_cmd(w, cid, env, tui) + ["ilio", "agent"] + (["-i"] if tui else []) + extra)
+    proc = subprocess.Popen(docker_cmd(w, cid, env, tui, kimi) + ["ilio", "agent"] + (["-i"] if tui else []) + (["-k"] if kimi else []) + extra)
     def watch():  # the flag is in: stop the container right away (auto moves on to the next challenge)
         while proc.poll() is None:
             if (w / "FLAG").exists():
@@ -325,7 +323,7 @@ CYBER_NOTE = ("\n\nNOTE: an earlier session on this sanctioned Flare-On CTF puzz
 
 def kimi_loop(prompt, tui, extra):
     """Headless Kimi Code loop. --continue is per container: a new container starts a fresh session and reads /work/notes.md."""
-    model = os.environ.get("ILIO_KIMI_MODEL", "kimi-code/k3")
+    model = "kimi-code/k3"
     if tui:
         cmd = ["kimi", "--auto", "-m", model, "--skills-dir", "/root/.agents/skills", *extra]
         cmd += ["--continue"] if (WORK / ".kimi-started").exists() else [prompt]
@@ -381,7 +379,7 @@ def agent(argv):
         if "max_concurrent_threads_per_session" not in text:
             text += '\n[agents]\nmax_concurrent_threads_per_session = 3\ndefault_subagent_reasoning_effort = "high"\n'
         dst.write_text(text + '\n[projects."/work"]\ntrust_level = "trusted"\n')
-    tui = "-i" in argv; extra = [a for a in argv if a != "-i"]
+    tui, kimi = "-i" in argv, "-k" in argv; extra = [a for a in argv if a not in ("-i", "-k")]
     if os.environ.get("ILIO_KUNA_DEV"):
         os.environ["PATH"] = "/opt/kuna-dev/decompiler/target/release:" + os.environ["PATH"]
         subprocess.run(["kuna", "install-skill", "--dir", "/root/.agents/skills", "--force"], capture_output=True)
@@ -394,8 +392,8 @@ def agent(argv):
     prompt = (f"{(WORK / 'README.md').read_text()}\n## Triage (/work/triage.md)\n{tri}\n\n"
               "Previous solves: /solves.md. Use $flareon and $kuna-decompiler. Solve this challenge now and submit the flag with `ilio submit 'FLAG'`. "
               "Do not search the web for this challenge, its name, or a write-up. Derive the flag from /work. "
-              "Reverser instructions: /root/.codex/AGENTS.md.")
-    if os.environ.get("ILIO_AGENT", "codex").lower() == "kimi":
+              f"Reverser instructions: {'/root/.kimi-code/AGENTS.md' if kimi else '/root/.codex/AGENTS.md'}.")
+    if kimi:
         kimi_loop(prompt, tui, extra); return
     flags = ["--dangerously-bypass-approvals-and-sandbox", *extra]
     if tui:

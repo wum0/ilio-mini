@@ -1,4 +1,4 @@
-# Ilio's Kimi Code config. Mounted over the host file when ILIO_AGENT=kimi.
+# Ilio's Kimi Code config. Mounted when ilio is started with -k.
 # Login stays on the host: credentials/ and oauth/ are mounted separately.
 default_model = "kimi-code/k3"
 default_permission_mode = "yolo"
@@ -24,7 +24,7 @@ command = "/root/.kimi-code/stop.sh"
 timeout = 10
 
 [[hooks]]
-event = "PostToolUse"
+event = "SessionHeartbeat"
 command = "/root/.kimi-code/nudge.py"
 timeout = 10
 
