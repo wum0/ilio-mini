@@ -1,0 +1,78 @@
+# Ilio's Kimi Code config. Mounted over the host file when ILIO_AGENT=kimi.
+# Login stays on the host: credentials/ and oauth/ are mounted separately.
+default_model = "kimi-code/k3"
+default_permission_mode = "yolo"
+telemetry = false
+merge_all_available_skills = true
+extra_skill_dirs = ["/root/.agents/skills"]
+
+[thinking]
+enabled = true
+effort = "high"
+
+[loop_control]
+max_steps_per_turn = 200
+max_ralph_iterations = -1
+
+[background]
+bash_auto_background_on_timeout = true
+bash_task_timeout_s = 120
+
+[[hooks]]
+event = "Stop"
+command = "/root/.kimi-code/stop.sh"
+timeout = 10
+
+[[hooks]]
+event = "PostToolUse"
+command = "/root/.kimi-code/nudge.py"
+timeout = 10
+
+[providers."managed:kimi-code"]
+type = "kimi"
+base_url = "https://api.kimi.com/coding/v1"
+
+[providers."managed:kimi-code".oauth]
+storage = "file"
+key = "oauth/kimi-code"
+
+[models."kimi-code/k3"]
+provider = "managed:kimi-code"
+model = "k3"
+max_context_size = 1048576
+capabilities = ["thinking", "always_thinking", "image_in", "video_in", "tool_use"]
+display_name = "K3"
+support_efforts = ["low", "high", "max"]
+default_effort = "high"
+
+[models."kimi-code/k3-256k"]
+provider = "managed:kimi-code"
+model = "k3-256k"
+max_context_size = 262144
+capabilities = ["thinking", "always_thinking", "image_in", "tool_use"]
+display_name = "K3-256k"
+support_efforts = ["low", "high", "max"]
+default_effort = "high"
+
+[models."kimi-code/kimi-for-coding"]
+provider = "managed:kimi-code"
+model = "kimi-for-coding"
+max_context_size = 1048576
+capabilities = ["thinking", "always_thinking", "image_in", "video_in", "tool_use"]
+display_name = "K2.8 Preview"
+support_efforts = ["low", "high", "max"]
+default_effort = "max"
+
+[services.moonshot_search]
+base_url = "https://api.kimi.com/coding/v1/search"
+
+[services.moonshot_search.oauth]
+storage = "file"
+key = "oauth/kimi-code"
+
+[services.moonshot_fetch]
+base_url = "https://api.kimi.com/coding/v1/fetch"
+
+[services.moonshot_fetch.oauth]
+storage = "file"
+key = "oauth/kimi-code"

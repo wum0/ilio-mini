@@ -9,6 +9,7 @@ on:
       - .dockerignore
       - ilio
       - codex/**
+      - kimi/**
       - skills/**
       - .github/workflows/docker.yml
   pull_request:
@@ -17,6 +18,7 @@ on:
       - .dockerignore
       - ilio
       - codex/**
+      - kimi/**
       - skills/**
       - .github/workflows/docker.yml
   workflow_dispatch:

@@ -13,8 +13,9 @@ An analysis of tool use during the competition can be found on this [page](https
 
 ## Setup
 ```bash
-docker build -t ilio-mini .                   # ubuntu:24.04 + kuna + RE tooling + codex
+docker build -t ilio-mini .                   # ubuntu:24.04 + kuna + RE tooling + codex + kimi
 codex login                                   # on the host; ~/.codex/auth.json is bind-mounted rw (never copied)
+kimi login                                    # only for ILIO_AGENT=kimi; ~/.kimi-code credentials/oauth are mounted
 cat > .env <<'EOF'                            # gitignored; also passed to the container
 CTFD_TOKEN=ctfd_xxx
 # or: CTFD_USER=me
@@ -33,7 +34,11 @@ prior flags are also tried as archive passwords).
 - `ilio` — CTFd client + docker launcher (host) and triage + codex loop + `ilio submit` (container).
 - `codex/` — `config.toml` (gpt-5.6-sol, effort high, priority tier), `AGENTS.md` (the reverser's instructions), hooks: `stop.sh`
   (keep going until a correct flag) and `nudge.py` (at 10/30 min without a flag, tell the root agent to split into lanes).
+- `kimi/` — the same role for Kimi Code: `config.toml` (kimi-code/k3, yolo, stop + nudge hooks), `AGENTS.md`, `stop.sh`, `nudge.py`.
+  The image installs Kimi Code (`KIMI_INSTALL_DIR=/usr/local`). Host `~/.kimi-code` supplies only the login.
 - `skills/` — `flareon` (playbook), `explore-alternatives`, `dotnet`, `python-re`, `windows-dynamic`; `kuna-decompiler` is installed from the kuna binary.
+
+`ILIO_AGENT=codex` (default) or `kimi`. Kimi is installed in the image and uses the host `~/.kimi-code` login (`kimi login`) plus `kimi/config.toml`. Model `ILIO_KIMI_MODEL` (default `kimi-code/k3`). Put `ILIO_AGENT=kimi` in `.env` or the shell that runs `./ilio`. Codex is unchanged when the variable is unset.
 
 Env knobs: `ILIO_TIMEOUT_H` (24, hard stop), `ILIO_BUDGET_H` (8), `ILIO_RESUMES` (12), `ILIO_FALLBACK_MODEL` (gpt-daybreak-blue-latest, used after repeated cyber-filter blocks), `ILIO_MEM` (96g), `ILIO_KUNA_DEV=~/github/kuna` (mount a freshly
 built kuna checkout instead of the image's release; `git pull && make binaries` first; can live in `.env`).

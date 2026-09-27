@@ -36,6 +36,10 @@ RUN curl -fsSL -o /tmp/j.zip https://github.com/skylot/jadx/releases/download/v1
 # Codex (full npm package: ships codex-code-mode-host) + JS tooling.
 RUN npm i -g @openai/codex@0.157.0 @electron/asar js-beautify && (npm i -g webcrack || echo "WARN: webcrack")
 
+# Kimi Code. Binary lands in /usr/local/bin; login and per-challenge config are mounted at runtime.
+RUN curl -fsSL https://code.kimi.com/kimi-code/install.sh | env KIMI_INSTALL_DIR=/usr/local KIMI_NO_MODIFY_PATH=1 bash && \
+    kimi --version
+
 # Warm wine prefix (32+64) so the first run is fast.
 RUN WINEDLLOVERRIDES="mscoree,mshtml=" xvfb-run -a wineboot -i && wineserver -w || echo "WARN: wineboot"
 
@@ -80,9 +84,10 @@ RUN mkdir -p /opt/kuna && \
 ENV VIRTUAL_ENV=/opt/py PIP_BREAK_SYSTEM_PACKAGES=1 \
     PATH=/opt/py/bin:/opt/kuna:/opt/dotnet-tools:/opt/jadx/bin:/root/.local/bin:/root/.dotnet/tools:/root/go/bin:/root/.cargo/bin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 COPY codex/ /root/.codex/
+COPY kimi/ /root/.kimi-code/
 COPY skills/ /root/.agents/skills/
 COPY ilio /usr/local/bin/ilio
-RUN chmod +x /usr/local/bin/ilio /root/.codex/*.sh /root/.codex/*.py && kuna install-skill --dir /root/.agents/skills --force && \
+RUN chmod +x /usr/local/bin/ilio /root/.codex/*.sh /root/.codex/*.py /root/.kimi-code/*.sh /root/.kimi-code/*.py && kuna install-skill --dir /root/.agents/skills --force && \
     codex --version && python -c "import angr, z3, capstone, unicorn, pefile, lief, Crypto" && \
     wine --version && pycdc --help >/dev/null 2>&1; ilspycmd --version && uv pip install --python /opt/py/bin/python pip && ln -sf /usr/bin/upx-ucl /usr/local/bin/upx && mkdir -p /work
 WORKDIR /work
